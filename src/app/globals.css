@@ -1,0 +1,485 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply min-h-screen flex flex-col;
+  }
+  :root {
+    /* Mantener los colores de fondo y texto para el tema claro */
+    --background: 0 0% 100%; /* Blanco */
+    --foreground: 222.2 47.4% 11.2%;
+
+    /* Otros colores de UI */
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --card: 210 40% 96.1%;
+    --card-foreground: 215.4 16.3% 46.9%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+
+    /* Actualizar los colores de acento según tus requisitos */
+    --primary: 0 0% 0%; /* Negro - #000000 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 0%; /* Negro - #000000 */
+    --secondary-foreground: 0 0% 100%;
+    --tertiary: 330 86% 70%; /* #F472B6 (pink-400 de Tailwind) */
+    --tertiary-foreground: 0 0% 100%;
+    --quaternary: 227 100% 63%; /* #4262ff */
+    --quaternary-foreground: 0 0% 100%;
+
+    /* Gradientes */
+    --secondary-from: 239 84% 67%; /* blue-500 */
+    --secondary-to: 183 100% 47%; /* cyan-500 */
+    --tertiary-from: 330 86% 70%; /* #F472B6 */
+    --tertiary-to: 227 100% 63%; /* #4262ff */
+    /* Otros colores de UI */
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 210 40% 98%;
+    --ring: 215 20.2% 65.1%;
+    --radius: 0.5rem;
+    --sidebar-bg: 0 0% 100%;
+    --sidebar-fg: 222.2 47.4% 11.2%;
+    --sidebar-hover: 210 40% 96.1%;
+    --sidebar-active: 215 25% 27%;
+  }
+
+  .dark {
+    /* Fondo negro puro como ya implementamos */
+    --background: 0 0% 0%; /* Negro puro #000000 */
+    --foreground: 213 31% 91%;
+
+    /* Suavizar los colores de borde */
+    --border: 220 13% 13%; /* Un gris más oscuro para los bordes */
+    --input: 220 13% 13%; /* Mismo color para inputs */
+
+    /* Ajustar el color de las cards para que tengan un contraste sutil */
+    --card: 220 13% 9%; /* Un gris muy oscuro, casi negro #131620 */
+    --card-foreground: 213 31% 91%;
+
+    /* Ajustar colores de elementos mutados para mejor legibilidad */
+    --card: 220 13% 9%;
+    --card-foreground: 213 31% 91%; /* Un poco más claro para mejor legibilidad */
+    --muted: 220 13% 9%;
+    /* El resto permanece igual */
+    --popover: 224 71% 4%;
+    --popover-foreground: 215 20.2% 65.1%;
+    --primary: 255, 255, 255, 1; /* Blanco - #000000 */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 0 0% 0%;
+    --secondary-foreground: 0 0% 100%; /* Blanco puro */
+    --tertiary: 330 86% 70%; /* #F472B6 (pink-400 de Tailwind) */
+    --tertiary-foreground: 0 0% 100%;
+    --quaternary: 227 100% 63%; /* #4262ff */
+    --quaternary-foreground: 0 0% 100%;
+    --secondary-from: 239 84% 67%; /* blue-500 */
+    --secondary-to: 183 100% 47%; /* cyan-500 */
+    --tertiary-from: 330 86% 70%; /* #F472B6 */
+    --tertiary-to: 227 100% 63%; /* #4262ff */
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 63% 31%;
+    --destructive-foreground: 210 40% 98%;
+    --ring: 216 34% 17%;
+    --sidebar-bg: 224 71% 4%;
+    --sidebar-fg: 213 31% 91%;
+    --sidebar-hover: 215 25% 27%;
+    --sidebar-active: 217 33% 17%;
+  }
+}
+@layer components {
+  /* Estilos mejorados para las cards en modo oscuro */
+  .dark .message-container,
+  .dark .metrics-container,
+  .dark .card {
+    background-color: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2),
+      0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  }
+  /* Suavizar los bordes de los elementos interactivos */
+  .dark button,
+  .dark input,
+  .dark select,
+  .dark textarea {
+    @apply border-[hsl(var(--border))];
+  }
+
+  /* Mejorar la legibilidad de los textos secundarios */
+  .dark .text-muted-foreground {
+    @apply text-gray-400;
+  }
+
+  .chat-container {
+    @apply bg-[hsl(var(--background))] min-h-screen;
+  }
+
+  .code-block {
+    @apply bg-[hsl(var(--muted))] rounded-lg overflow-hidden;
+  }
+
+  .metrics-container {
+    @apply bg-[hsl(var(--card))] rounded-lg p-4 mb-4;
+  }
+}
+.main-content {
+  height: calc(100vh - 36px); /* 36px es la altura del footer */
+}
+.prose {
+  @apply max-w-none;
+}
+
+.prose pre {
+  @apply bg-[hsl(var(--card))] rounded-lg my-4 p-4 overflow-x-auto;
+}
+
+.prose code {
+  @apply text-sm font-medium bg-[hsl(var(--card))] px-1.5 py-0.5 rounded;
+}
+#root,
+body,
+html {
+  @apply m-0 p-0 overflow-hidden;
+}
+
+body {
+  @apply bg-background text-foreground;
+}
+
+@layer utilities {
+  /* Actualizar los gradientes para usar los nuevos colores */
+  .gradient-title {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#F472B6] to-[#4262ff];
+  }
+
+  .gradient-secondary {
+    @apply bg-gradient-to-r from-[#4D9EFF] to-[#6D7FBD];
+  }
+
+  .gradient-tertiary {
+    @apply bg-gradient-to-r from-[#F472B6] to-[#4262ff];
+  }
+
+  .gradient-text-secondary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#4D9EFF] to-[#6D7FBD];
+  }
+
+  .gradient-text-tertiary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#F472B6] to-[#4262ff];
+  }
+
+  .gradient-text-secondary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#4D9EFF] to-[#6D7FBD];
+  }
+
+  .gradient-text-tertiary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-[#9E89BE] to-[#6D7FBD];
+  }
+
+  .gradient-text-secondary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-500 to-cyan-500;
+  }
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-tertiary to-quaternary;
+  }
+
+  .gradient-text-tertiary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-purple-500 to-pink-500;
+  }
+  .gradient-text-orange {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-orange-500 to-orange-700;
+  }
+}
+@font-face {
+  font-family: "Paloseco";
+  src: url("/fonts/Paloseco-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/GeistVF.woff") format("woff");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "GeistMono";
+  src: url("/fonts/GeistMonoVF.woff") format("woff");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Animaciones para el panel */
+.transform {
+  transition-property: transform, width;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* Ajustes para el contenido principal cuando el editor está abierto */
+.main-content {
+  transition: margin-right 300ms ease;
+}
+
+.main-content.editor-open {
+  margin-right: 45%;
+}
+
+.main-content.editor-expanded {
+  margin-right: 75%;
+}
+
+/* Transiciones suaves */
+.transition-all {
+  transition-property: all;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* Ajustes para el contenedor principal */
+.flex-1 {
+  min-width: 0;
+}
+
+/* Estilos para el panel del editor */
+.absolute {
+  transition: width 300ms ease;
+}
+
+.scrollbar-custom {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+.scrollbar-custom::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-custom::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  border: transparent;
+}
+
+.scrollbar-custom::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Asegurarse de que el contenedor tenga altura completa */
+.h-full {
+  height: 100%;
+}
+
+.flex-1 {
+  flex: 1 1 0%;
+  min-height: 0; /* Importante para que el scroll funcione */
+}
+.gradient-border-button {
+  background: hsl(var(--background));
+  border: double 1px transparent;
+  background-image: linear-gradient(
+      hsl(var(--background)),
+      hsl(var(--background))
+    ),
+    linear-gradient(to right, hsl(var(--secondary)), hsl(var(--tertiary)));
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+
+.gradient-hover {
+  background: linear-gradient(
+    to right,
+    hsl(var(--secondary)),
+    hsl(var(--tertiary))
+  );
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+/* Reemplaza estas secciones en globals.css */
+
+.prose {
+  --tw-prose-body: #d1d5db;
+  --tw-prose-headings: #ffffff;
+  --tw-prose-links: #60a5fa;
+  --tw-prose-bold: #ffffff;
+  --tw-prose-counters: #9ca3af;
+  --tw-prose-bullets: #9ca3af;
+  --tw-prose-quotes: #d1d5db;
+  --tw-prose-code: #ffffff;
+}
+
+.prose-invert {
+  --tw-prose-body: #d1d5db;
+  --tw-prose-headings: #ffffff;
+  --tw-prose-links: #60a5fa;
+  --tw-prose-bold: #ffffff;
+  --tw-prose-counters: #9ca3af;
+  --tw-prose-bullets: #9ca3af;
+  --tw-prose-quotes: #d1d5db;
+  --tw-prose-code: #ffffff;
+}
+
+.prose {
+  color: inherit;
+}
+
+.prose h3 {
+  color: inherit;
+  margin-top: 2em;
+  margin-bottom: 1em;
+}
+
+.prose ul {
+  list-style-type: disc;
+  padding-left: 1.5em;
+}
+
+.prose ol {
+  list-style-type: decimal;
+  padding-left: 1.5em;
+}
+
+.prose li {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.prose p {
+  margin-top: 1em;
+  margin-bottom: 1em;
+  line-height: 1.6;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: inherit;
+}
+
+body {
+  @apply bg-background text-foreground font-geist;
+}
+
+/* Para elementos de código o monoespaciados */
+code,
+pre {
+  @apply font-geistMono;
+}
+
+@keyframes wave-gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.wave-title {
+  display: inline-block;
+  width: 100%;
+  text-align: center;
+  background: linear-gradient(90deg, #f472b6, #4262ff, #f472b6);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: wave-gradient 6s ease infinite;
+}
+
+.wave-text {
+  position: relative;
+  display: inline-block;
+  background: linear-gradient(to right, #f472b6, #4262ff);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: wave 4s ease-in-out infinite alternate;
+  text-shadow: 0px 0px 10px rgba(244, 114, 182, 0.3);
+}
+
+.quaternary-border {
+  border: 2px solid hsl(var(--quaternary));
+}
+
+.dark [data-radix-select-content] {
+  background-color: hsl(var(--card)) !important;
+  border-color: hsl(var(--border)) !important;
+}
+
+[data-radix-select-content] {
+  background-color: hsl(var(--muted)) !important;
+}
+
+/* Estilos para los items del Select */
+.dark [data-radix-select-item] {
+  color: hsl(var(--foreground));
+}
+
+.dark [data-radix-select-item][data-highlighted] {
+  background-color: hsl(var(--card)) !important;
+  color: white !important;
+}
+
+[data-radix-select-item][data-highlighted] {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+/* Estilos para el item seleccionado */
+.dark [data-radix-select-item][data-state="checked"] {
+  background-color: hsl(var(--card)) !important;
+  color: white !important;
+}
+
+[data-radix-select-item][data-state="checked"] {
+  background-color: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+.prose table {
+  @apply w-full border-collapse border border-gray-300 my-4;
+}
+
+.prose th,
+.prose td {
+  @apply border border-gray-300 px-4 py-2;
+}
+
+.prose thead {
+  @apply bg-gray-100;
+}
+
+.prose th {
+  @apply bg-card font-semibold text-left text-black;
+}
+
+.dark .prose table {
+  @apply border-gray-600;
+}
+.dark .prose th,
+.dark .prose td {
+  @apply border-gray-600;
+}
+.dark .prose thead {
+  @apply bg-gray-800;
+}
+.dark .prose th {
+  @apply bg-muted text-white;
+}
