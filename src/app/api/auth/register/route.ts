@@ -1,7 +1,7 @@
 // app/api/auth/register/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { httpRequestDuration, httpRequestTotal, supabaseOperations } from "@/lib/metrics";
+import { httpRequestDuration, httpRequestTotal, httpRequestsActive, supabaseOperations, supabaseConnectionsActive, supabaseQueryDuration } from "@/lib/metrics";
 
 // Verificar variables de entorno
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -32,6 +32,9 @@ const supabase = createClient(
 export async function POST(request: Request) {
   const endTimer = httpRequestDuration.startTimer({ method: 'POST', route: '/api/auth/register' });
   
+  httpRequestsActive.inc({ method: 'POST', route: '/api/auth/register' });
+  supabaseConnectionsActive.inc();
+  
   try {
     const { email, password } = await request.json();
 
@@ -47,11 +50,13 @@ export async function POST(request: Request) {
     }
 
     // Verificar si el email ya existe
+    const queryTimer = supabaseQueryDuration.startTimer({ operation: 'select', table: 'aria_user_profiles' });
     const { data: existingUser } = await supabase
       .from("aria_user_profiles")
       .select("email")
       .eq("email", email)
       .single();
+    queryTimer();
 
     supabaseOperations.inc({ operation: 'select', table: 'aria_user_profiles', status: 'success' });
 
@@ -139,5 +144,8 @@ export async function POST(request: Request) {
       { error: "Error interno del servidor" },
       { status: 500 }
     );
+  } finally {
+    httpRequestsActive.dec({ method: 'POST', route: '/api/auth/register' });
+    supabaseConnectionsActive.dec();
   }
 }

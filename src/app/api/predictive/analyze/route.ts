@@ -8,7 +8,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 import crypto from "crypto";
 import { type S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
 import jwt from "jsonwebtoken";
-import { httpRequestDuration, httpRequestTotal, supabaseOperations, n8nWorkflowDuration } from "@/lib/metrics";
+import { httpRequestDuration, httpRequestTotal, httpRequestsActive, supabaseOperations, supabaseConnectionsActive, supabaseQueryDuration, n8nWorkflowDuration } from "@/lib/metrics";
 
 import type { Message as OriginalMessage } from "@/components/predictive/PredictiveTypes";
 
@@ -283,6 +283,9 @@ export async function POST(req: Request) {
   const startTime = Date.now();
   const endTimer = httpRequestDuration.startTimer({ method: 'POST', route: '/api/predictive/analyze' });
   
+  httpRequestsActive.inc({ method: 'POST', route: '/api/predictive/analyze' });
+  supabaseConnectionsActive.inc();
+  
   let n8nResponse: Response;
   let supabase: SupabaseClient | undefined = undefined;
   const session: any = undefined;
@@ -333,12 +336,14 @@ export async function POST(req: Request) {
 
     let chatData: ChatData | null = null;
     try {
+      const queryTimer = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_chats' });
       const { data, error } = await supabase
         .from("hestia_chats")
         .select("project_id, messages, version_id")
         .eq("session_id", sessionId)
         .eq("user_id", session.user.id)
         .single();
+      queryTimer();
 
       if (error) {
         console.warn("Error al buscar chat:", error);
@@ -816,6 +821,9 @@ export async function POST(req: Request) {
       },
       { status: (error as any)?.status || 500 }
     );
+  } finally {
+    httpRequestsActive.dec({ method: 'POST', route: '/api/predictive/analyze' });
+    supabaseConnectionsActive.dec();
   }
 }
 
