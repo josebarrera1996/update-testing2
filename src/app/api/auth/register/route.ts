@@ -1,6 +1,7 @@
 // app/api/auth/register/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { httpRequestDuration, httpRequestTotal, supabaseOperations } from "@/lib/metrics";
 
 // Verificar variables de entorno
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -29,6 +30,8 @@ const supabase = createClient(
 );
 
 export async function POST(request: Request) {
+  const endTimer = httpRequestDuration.startTimer({ method: 'POST', route: '/api/auth/register' });
+  
   try {
     const { email, password } = await request.json();
 
@@ -50,7 +53,11 @@ export async function POST(request: Request) {
       .eq("email", email)
       .single();
 
+    supabaseOperations.inc({ operation: 'select', table: 'aria_user_profiles', status: 'success' });
+
     if (existingUser) {
+      httpRequestTotal.inc({ method: 'POST', route: '/api/auth/register', status_code: '400' });
+      endTimer({ status_code: '400' });
       return NextResponse.json(
         { error: "El email ya está registrado" },
         { status: 400 }
@@ -71,6 +78,9 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("Error en registro:", error);
+      supabaseOperations.inc({ operation: 'signUp', table: 'auth', status: 'error' });
+      httpRequestTotal.inc({ method: 'POST', route: '/api/auth/register', status_code: '400' });
+      endTimer({ status_code: '400' });
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
@@ -97,13 +107,21 @@ export async function POST(request: Request) {
 
     if (profileError) {
       console.error("Error creando perfil:", profileError);
+      supabaseOperations.inc({ operation: 'insert', table: 'aria_user_profiles', status: 'error' });
       // Limpiar usuario si falla la creación del perfil
       await supabase.auth.admin.deleteUser(data.user.id);
+      httpRequestTotal.inc({ method: 'POST', route: '/api/auth/register', status_code: '400' });
+      endTimer({ status_code: '400' });
       return NextResponse.json(
         { error: "Error al crear el perfil de usuario" },
         { status: 400 }
       );
+    } else {
+      supabaseOperations.inc({ operation: 'insert', table: 'aria_user_profiles', status: 'success' });
     }
+
+    httpRequestTotal.inc({ method: 'POST', route: '/api/auth/register', status_code: '200' });
+    endTimer({ status_code: '200' });
 
     return NextResponse.json({
       success: true,
@@ -115,6 +133,8 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Error general:", error);
+    httpRequestTotal.inc({ method: 'POST', route: '/api/auth/register', status_code: '500' });
+    endTimer({ status_code: '500' });
     return NextResponse.json(
       { error: "Error interno del servidor" },
       { status: 500 }

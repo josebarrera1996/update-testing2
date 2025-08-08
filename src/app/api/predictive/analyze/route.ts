@@ -8,6 +8,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 import crypto from "crypto";
 import { type S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
 import jwt from "jsonwebtoken";
+import { httpRequestDuration, httpRequestTotal, supabaseOperations, n8nWorkflowDuration } from "@/lib/metrics";
 
 import type { Message as OriginalMessage } from "@/components/predictive/PredictiveTypes";
 
@@ -279,6 +280,9 @@ async function cleanupCodeState(
 }
 
 export async function POST(req: Request) {
+  const startTime = Date.now();
+  const endTimer = httpRequestDuration.startTimer({ method: 'POST', route: '/api/predictive/analyze' });
+  
   let n8nResponse: Response;
   let supabase: SupabaseClient | undefined = undefined;
   const session: any = undefined;
@@ -505,7 +509,7 @@ export async function POST(req: Request) {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), N8N_TIMEOUT);
-      const startTime = Date.now();
+      const n8nStartTime = Date.now();
 
       try {
         const jsonPayload = Object.fromEntries(n8nFormData.entries());
@@ -524,7 +528,9 @@ export async function POST(req: Request) {
         clearTimeout(timeoutId);
       }
 
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - n8nStartTime;
+      const n8nDuration = duration / 1000;
+      n8nWorkflowDuration.observe(n8nDuration);
       console.log(`N8N call completed in ${duration}ms`);
 
       if (duration > 20000) {
@@ -666,7 +672,10 @@ export async function POST(req: Request) {
 
       if (updateError) {
         console.error("❌ Error actualizando chat:", updateError);
+        supabaseOperations.inc({ operation: 'update', table: 'hestia_chats', status: 'error' });
         throw updateError;
+      } else {
+        supabaseOperations.inc({ operation: 'update', table: 'hestia_chats', status: 'success' });
       }
 
       if (generatedCodeUrls && generatedCodeUrls.length > 0) {
@@ -718,6 +727,9 @@ export async function POST(req: Request) {
         `✅ Mensajes guardados exitosamente. Thinking flag: ${assistantMessage.thinking}`
       );
 
+      httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '200' });
+      endTimer({ status_code: '200' });
+
       return NextResponse.json({
         success: true,
         response: assistantMessage.content,
@@ -745,6 +757,9 @@ export async function POST(req: Request) {
     }
   } catch (error) {
     console.error("Error completo:", error);
+    
+    httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '500' });
+    endTimer({ status_code: '500' });
 
     try {
       if (!supabase) {
