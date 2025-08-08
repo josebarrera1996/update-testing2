@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { httpRequestDuration, httpRequestTotal } from './metrics';
+import { httpRequestDuration, httpRequestTotal, httpRequestsActive } from './metrics';
 
 export function withMetrics(handler: Function) {
   return async (req: NextRequest, ...args: any[]) => {
@@ -8,6 +8,8 @@ export function withMetrics(handler: Function) {
       method: req.method, 
       route: req.nextUrl.pathname 
     });
+    
+    httpRequestsActive.inc({ method: req.method, route: req.nextUrl.pathname });
     
     try {
       const response = await handler(req, ...args);
@@ -29,6 +31,8 @@ export function withMetrics(handler: Function) {
       });
       endTimer({ status_code: '500' });
       throw error;
+    } finally {
+      httpRequestsActive.dec({ method: req.method, route: req.nextUrl.pathname });
     }
   };
 }
