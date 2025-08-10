@@ -3,7 +3,6 @@ import { httpRequestDuration, httpRequestTotal, httpRequestsActive } from './met
 
 export function withMetrics(handler: Function) {
   return async (req: NextRequest, ...args: any[]) => {
-    const startTime = Date.now();
     const endTimer = httpRequestDuration.startTimer({ 
       method: req.method, 
       route: req.nextUrl.pathname 
