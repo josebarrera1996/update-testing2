@@ -6,13 +6,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { Agent, fetch as undiciFetch } from "undici";
 import crypto from "crypto";
-import { type S3Client, HeadObjectCommand } from "@aws-sdk/client-s3";
 import jwt from "jsonwebtoken";
 import { httpRequestDuration, httpRequestTotal, httpRequestsActive, supabaseOperations, supabaseConnectionsActive, supabaseQueryDuration, n8nWorkflowDuration } from "@/lib/metrics";
-
-import type { Message as OriginalMessage } from "@/components/predictive/PredictiveTypes";
-
-type Message = OriginalMessage & { thinking?: boolean };
 
 export const config = {
   runtime: "nodejs",
@@ -26,32 +21,24 @@ interface ExtendedRequestInit extends RequestInit {
   dispatcher?: any;
 }
 
-type ChatData = {
-  project_id: string;
-  messages: Message[];
-  version_id: number;
-};
-
 const agent = new Agent({
   headersTimeout: 0,
   bodyTimeout: 0,
 });
 
-const N8N_TIMEOUT = 800_000;
+const N8N_TIMEOUT = 50_000;
 
 const N8N_WORKFLOW =
   process.env.N8N_WEBHOOK_URL ||
   "https://aria-studio-k8s.garagedeepanalytics.com/webhook/aria-crew-ds-test";
 
-// JWT Configuration
 const JWT_SECRET = process.env.N8N_JWT_SECRET || "your-secret-key";
 const JWT_ISSUER = "HestiaAuthenticator";
 const JWT_AUDIENCE = "HestiaN8NFlows";
 const JWT_EXPIRATION_MINUTES = Number.parseInt(
   process.env.JWT_EXPIRATION_MINUTES || "60"
-); // Default: 60 minutos
+);
 
-// Función para generar JWT
 function generateN8NJWT(
   userId: string,
   projectId: string,
@@ -60,15 +47,12 @@ function generateN8NJWT(
   const now = Math.floor(Date.now() / 1000);
 
   const payload = {
-    // Standard Claims
     iss: JWT_ISSUER,
     aud: JWT_AUDIENCE,
     sub: userId,
-    exp: now + JWT_EXPIRATION_MINUTES * 60, // Configurable
+    exp: now + JWT_EXPIRATION_MINUTES * 60,
     iat: now,
     jti: crypto.randomUUID(),
-
-    // Custom Claims
     pid: projectId,
     rol: userRole,
   };
@@ -111,63 +95,9 @@ const fetchWithRetry = async (
   throw new Error(`Failed after ${maxRetries} attempts`);
 };
 
-interface FileData {
-  name: string;
-  path: string;
-  blob: Buffer;
-  type: string;
-}
-
-async function getUniqueKey(
-  s3Client: S3Client,
-  bucket: string,
-  key: string
-): Promise<string> {
-  let uniqueKey = key;
-  let counter = 0;
-  while (true) {
-    try {
-      await s3Client.send(
-        new HeadObjectCommand({ Bucket: bucket, Key: uniqueKey })
-      );
-      counter++;
-      const parts = key.split("/");
-      const fileName = parts.pop()!;
-      const dir = parts.join("/");
-      const dotIndex = fileName.lastIndexOf(".");
-      let base = fileName;
-      let ext = "";
-      if (dotIndex !== -1) {
-        base = fileName.substring(0, dotIndex);
-        ext = fileName.substring(dotIndex);
-      }
-      uniqueKey = `${dir}/${base}_${counter}${ext}`;
-    } catch (error: any) {
-      if (error.$metadata && error.$metadata.httpStatusCode === 404) {
-        break;
-      } else {
-        throw error;
-      }
-    }
-  }
-  return uniqueKey;
-}
-
-function sanitizeFileName(fileName: string): string {
-  const ext = fileName.split(".").pop();
-  const name = fileName
-    .split(".")
-    .slice(0, -1)
-    .join(".")
-    .replace(/[^a-zA-Z0-9]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_|_$/g, "");
-  return `${name}.${ext}`;
-}
-
-function calculateNextVersion(messages: Message[]): number {
+function calculateNextVersion(messages: any[]): number {
   if (!messages || messages.length === 0) return 0;
-  const validPairs = [];
+  const validPairs: any[] = [];
   let i = 0;
   while (i < messages.length) {
     const userMessage = messages[i];
@@ -186,109 +116,13 @@ function calculateNextVersion(messages: Message[]): number {
   return validPairs.length;
 }
 
-async function checkAndGetGeneratedCode(
-  supabase: SupabaseClient,
-  sessionId: string
-): Promise<string[] | null> {
-  try {
-    console.log("🔍 Verificando si se generó código para session:", sessionId);
-
-    const { data: stateData, error: stateError } = await supabase
-      .from("hestia_states")
-      .select("has_code, code")
-      .eq("session_id", sessionId)
-      .single();
-
-    if (stateError) {
-      console.log("⚠️ No se encontró estado para la sesión:", stateError);
-      return null;
-    }
-
-    if (!stateData?.has_code) {
-      console.log("📝 No se generó código en esta iteración");
-      return null;
-    }
-
-    if (!stateData.code) {
-      console.log("⚠️ has_code es true pero no hay URLs de código");
-      return null;
-    }
-
-    let codeUrls: string[] = [];
-
-    try {
-      if (typeof stateData.code === "string") {
-        try {
-          const parsed = JSON.parse(stateData.code);
-          if (Array.isArray(parsed)) {
-            codeUrls = parsed.filter(
-              (url) => typeof url === "string" && url.trim() !== ""
-            );
-          } else if (typeof parsed === "string") {
-            codeUrls = [parsed];
-          }
-        } catch {
-          codeUrls = [stateData.code];
-        }
-      } else if (Array.isArray(stateData.code)) {
-        codeUrls = stateData.code.filter(
-          (url) => typeof url === "string" && url.trim() !== ""
-        );
-      }
-    } catch (error) {
-      console.error("❌ Error parseando URLs de código:", error);
-      return null;
-    }
-
-    if (codeUrls.length === 0) {
-      console.log("⚠️ No se encontraron URLs válidas de código");
-      return null;
-    }
-
-    console.log("✅ Código encontrado:", codeUrls);
-    return codeUrls;
-  } catch (error) {
-    console.error("❌ Error verificando código generado:", error);
-    return null;
-  }
-}
-
-async function cleanupCodeState(
-  supabase: SupabaseClient,
-  sessionId: string
-): Promise<void> {
-  try {
-    console.log("🧹 Limpiando estado de código para session:", sessionId);
-
-    const { error: cleanupError } = await supabase
-      .from("hestia_states")
-      .update({
-        has_code: false,
-        code: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("session_id", sessionId);
-
-    if (cleanupError) {
-      console.error("❌ Error limpiando estado de código:", cleanupError);
-    } else {
-      console.log("✅ Estado de código limpiado exitosamente");
-    }
-  } catch (error) {
-    console.error("❌ Error en cleanup de código:", error);
-  }
-}
-
 export async function POST(req: Request) {
-  const startTime = Date.now();
   const endTimer = httpRequestDuration.startTimer({ method: 'POST', route: '/api/predictive/analyze' });
   
   httpRequestsActive.inc({ method: 'POST', route: '/api/predictive/analyze' });
   supabaseConnectionsActive.inc();
   
-  let n8nResponse: Response;
   let supabase: SupabaseClient | undefined = undefined;
-  const session: any = undefined;
   let sessionId: string | undefined = undefined;
   const requestId = crypto.randomUUID();
 
@@ -302,21 +136,27 @@ export async function POST(req: Request) {
     } = await supabase.auth.getSession();
 
     if (!session?.user) {
+      httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '401' });
+      endTimer({ status_code: '401' });
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     let userRole = "Default";
 
+    const queryTimer1 = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_user_profiles_new' });
     const { data: userProfileData, error: profileError } = await supabase
       .from("hestia_user_profiles_new")
       .select("role")
       .eq("id", session.user.id)
       .single();
+    queryTimer1();
 
     if (profileError || !userProfileData) {
       console.warn("Error obteniendo rol de usuario:", profileError);
+      supabaseOperations.inc({ operation: 'select', table: 'hestia_user_profiles_new', status: 'error' });
       userRole = "Default";
     } else {
+      supabaseOperations.inc({ operation: 'select', table: 'hestia_user_profiles_new', status: 'success' });
       userRole = userProfileData.role || "Default";
     }
 
@@ -329,40 +169,47 @@ export async function POST(req: Request) {
     const search = (formData.get("search") as string) || "false";
     const document = (formData.get("document") as string) || "false";
     const agentic = (formData.get("agentic") as string) || "false";
-
-    // Obtener el timestamp del usuario enviado desde el frontend
     const userMessageTimestamp = formData.get("userMessageTimestamp") as string;
+
     console.log("🕐 Timestamp del usuario recibido:", userMessageTimestamp);
 
-    let chatData: ChatData | null = null;
+    let chatData: any = null;
     try {
-      const queryTimer = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_chats' });
+      const queryTimer2 = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_chats' });
       const { data, error } = await supabase
         .from("hestia_chats")
         .select("project_id, messages, version_id")
         .eq("session_id", sessionId)
         .eq("user_id", session.user.id)
         .single();
-      queryTimer();
+      queryTimer2();
 
       if (error) {
         console.warn("Error al buscar chat:", error);
+        supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'error' });
         if (error.code === "PGRST116") {
+          const queryTimer3 = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_chats' });
           const { data: multipleChats, error: multipleError } = await supabase
             .from("hestia_chats")
             .select("project_id, messages, version_id")
             .eq("session_id", sessionId)
             .eq("user_id", session.user.id);
+          queryTimer3();
 
           if (multipleChats && multipleChats.length > 0) {
-            chatData = multipleChats[0] as ChatData;
+            chatData = multipleChats[0];
+            supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'success' });
+          } else {
+            supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'error' });
           }
         }
       } else {
-        chatData = data as ChatData;
+        chatData = data;
+        supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'success' });
       }
     } catch (searchError) {
       console.error("Error en búsqueda de chat:", searchError);
+      supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'error' });
     }
 
     if (!chatData) {
@@ -372,6 +219,7 @@ export async function POST(req: Request) {
         session.user.id
       )}`;
 
+      const queryTimer4 = supabaseQueryDuration.startTimer({ operation: 'insert', table: 'hestia_chats' });
       const { data: newChatData, error: newChatError } = await supabase
         .from("hestia_chats")
         .insert({
@@ -386,20 +234,13 @@ export async function POST(req: Request) {
         })
         .select()
         .single();
-
-      await supabase.from("hestia_states").upsert(
-        {
-          session_id: sessionId,
-          is_loading: true,
-          pending_messages: null,
-          updated_at: new Date().toISOString(),
-          request_id: requestId,
-        },
-        { onConflict: "session_id" }
-      );
+      queryTimer4();
 
       if (newChatError) {
         console.error("Error creando chat automáticamente:", newChatError);
+        supabaseOperations.inc({ operation: 'insert', table: 'hestia_chats', status: 'error' });
+        httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '500' });
+        endTimer({ status_code: '500' });
         return NextResponse.json(
           { error: "No se pudo crear un nuevo chat", details: newChatError },
           { status: 500 }
@@ -407,40 +248,84 @@ export async function POST(req: Request) {
       }
 
       if (!newChatData) {
+        supabaseOperations.inc({ operation: 'insert', table: 'hestia_chats', status: 'error' });
+        httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '500' });
+        endTimer({ status_code: '500' });
         return NextResponse.json(
           { error: "No se pudo crear un nuevo chat" },
           { status: 500 }
         );
       }
 
+      supabaseOperations.inc({ operation: 'insert', table: 'hestia_chats', status: 'success' });
+
       chatData = {
         project_id: newChatData.project_id,
         messages: newChatData.messages || [],
         version_id: 0,
       };
-    } else {
-      await supabase.from("hestia_states").upsert(
-        {
-          session_id: sessionId,
-          is_loading: true,
-          updated_at: new Date().toISOString(),
-          request_id: requestId,
-        },
-        { onConflict: "session_id" }
-      );
     }
 
     const currentMessages = chatData.messages || [];
     const nextVersion = calculateNextVersion(currentMessages);
 
+    let attachmentsToStore: any = null;
+    let fileKeysForN8N: string | null = null;
+
+    if (attachmentMetadata) {
+      try {
+        const metadatas = JSON.parse(attachmentMetadata as string);
+        if (Array.isArray(metadatas) && metadatas.length > 0) {
+          attachmentsToStore = metadatas;
+          const allFileKeys = metadatas
+            .map((metadata) => metadata.fileKey)
+            .filter((key) => key);
+
+          if (allFileKeys.length > 0) {
+            fileKeysForN8N = allFileKeys.join(",");
+          }
+
+          console.log(
+            "📎 Attachments procesados para almacenar:",
+            attachmentsToStore
+          );
+          console.log("🔑 FileKeys generados para N8N:", fileKeysForN8N);
+        } else if (metadatas && typeof metadatas === "object") {
+          attachmentsToStore = [metadatas];
+          if (metadatas.fileKey) {
+            fileKeysForN8N = metadatas.fileKey;
+          }
+          console.log(
+            "📎 Attachment individual procesado para almacenar:",
+            attachmentsToStore
+          );
+        }
+      } catch (error) {
+        console.error("Error parsing attachmentMetadata:", error);
+      }
+    }
+
+    const queryTimer5 = supabaseQueryDuration.startTimer({ operation: 'upsert', table: 'hestia_states' });
+    await supabase.from("hestia_states").upsert(
+      {
+        session_id: sessionId,
+        is_loading: true,
+        updated_at: new Date().toISOString(),
+        request_id: requestId,
+        pending_attachments: attachmentsToStore,
+      },
+      { onConflict: "session_id" }
+    );
+    queryTimer5();
+    supabaseOperations.inc({ operation: 'upsert', table: 'hestia_states', status: 'success' });
+
     console.log(
-      "🔄 is_loading activado para session:",
+      "🔄 is_loading activado y attachments guardados para session:",
       sessionId,
       "request:",
       requestId
     );
 
-    // 🔐 GENERAR JWT PARA N8N
     const jwtToken = generateN8NJWT(
       session.user.id,
       chatData.project_id,
@@ -463,293 +348,99 @@ export async function POST(req: Request) {
     n8nFormData.append("document", document);
     n8nFormData.append("agentic", agentic);
     n8nFormData.append("request_id", requestId);
+    n8nFormData.append("user_message_timestamp", userMessageTimestamp);
 
     if (fileKey) {
       n8nFormData.append("fileKey", fileKey);
     }
 
-    if (attachmentMetadata) {
-      try {
-        const metadatas = JSON.parse(attachmentMetadata as string);
-
-        if (Array.isArray(metadatas)) {
-          const allFileKeys = metadatas
-            .map((metadata) => metadata.fileKey)
-            .filter((key) => key);
-
-          if (allFileKeys.length > 0) {
-            n8nFormData.append("fileKeys", allFileKeys.join(","));
-          }
-
-          if (metadatas[0]?.fileKey) {
-            n8nFormData.append("fileKey", metadatas[0].fileKey);
-          }
-
-          n8nFormData.append("attachmentMetadata", JSON.stringify(metadatas));
-        } else {
-          if (metadatas.fileKey) {
-            n8nFormData.append("fileKey", metadatas.fileKey);
-            n8nFormData.append("attachmentMetadata", JSON.stringify(metadatas));
-          }
-        }
-      } catch (error) {
-        console.error("Error parsing attachmentMetadata:", error);
-        n8nFormData.append("attachmentMetadata", attachmentMetadata as string);
-      }
+    if (fileKeysForN8N) {
+      n8nFormData.append("fileKeys", fileKeysForN8N);
+      console.log("🔑 fileKeys enviado a N8N:", fileKeysForN8N);
     }
 
-    console.log("🔍 FormData recibido:", {
+    console.log("🔍 FormData preparado para N8N:", {
       message: formData.get("message"),
       sessionId: formData.get("sessionId"),
       thinking: formData.get("thinking"),
       agentic: formData.get("agentic"),
       requestId: requestId,
+      hasFileKey: !!fileKey,
+      hasFileKeys: !!fileKeysForN8N,
+      attachmentsStored: !!attachmentsToStore,
     });
-
-    console.log(
-      "Datos enviados a N8N:",
-      Object.fromEntries(n8nFormData.entries())
-    );
 
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), N8N_TIMEOUT);
       const n8nStartTime = Date.now();
 
+      let n8nResponse: Response;
       try {
         const jsonPayload = Object.fromEntries(n8nFormData.entries());
 
-        // 🔐 ENVIAR PETICIÓN CON JWT EN HEADER AUTHORIZATION
         n8nResponse = await fetchWithRetry(N8N_WORKFLOW, {
           method: "POST",
           body: JSON.stringify(jsonPayload),
           signal: controller.signal,
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${jwtToken}`, // 🔐 JWT en header
+            Authorization: `Bearer ${jwtToken}`,
           },
         });
       } finally {
         clearTimeout(timeoutId);
       }
 
-      const duration = Date.now() - n8nStartTime;
-      const n8nDuration = duration / 1000;
+      const n8nDuration = (Date.now() - n8nStartTime) / 1000;
       n8nWorkflowDuration.observe(n8nDuration);
-      console.log(`N8N call completed in ${duration}ms`);
-
-      if (duration > 20000) {
-        console.warn("Long running n8n call detected", {
-          duration,
-          sessionId,
-          userId: session.user.id,
-        });
-      }
+      console.log(`N8N call completed in ${Date.now() - n8nStartTime}ms`);
 
       if (!n8nResponse.ok) {
         const errorText = await n8nResponse.text();
         console.error("N8N Error Response:", errorText);
+        throw new Error(`N8N Error: ${errorText}`);
+      }
 
+      console.log("✅ N8N webhook triggered successfully");
+
+      const isFirstMessageInChat =
+        !currentMessages || currentMessages.length === 0;
+      if (isFirstMessageInChat) {
         try {
-          const errorJson = JSON.parse(errorText);
-          throw new Error(`N8N Error: ${errorJson.message || errorText}`);
-        } catch {
-          throw new Error(`N8N Error: ${errorText}`);
-        }
-      }
-
-      const n8nData = await n8nResponse.json();
-      const responseData = Array.isArray(n8nData) ? n8nData[0] : n8nData;
-
-      let finalOutput = "No hay respuesta disponible";
-
-      if (typeof responseData.output === "string") {
-        finalOutput = responseData.output;
-      } else if (Array.isArray(responseData.output)) {
-        const textObject = responseData.output.find(
-          (item: any) => item.type === "text" && item.text
-        );
-
-        if (textObject?.text) {
-          finalOutput = textObject.text;
-        } else {
-          const combined = responseData.output
-            .map((item: any) => {
-              if (item.type === "text" && item.text) {
-                return item.text;
-              }
-              return "";
-            })
-            .filter(Boolean)
-            .join("\n\n")
-            .trim();
-
-          if (combined) finalOutput = combined;
-        }
-      }
-
-      let attachments = [];
-      if (attachmentMetadata) {
-        try {
-          const parsedMetadata = JSON.parse(attachmentMetadata as string);
-          attachments = Array.isArray(parsedMetadata)
-            ? parsedMetadata
-            : [parsedMetadata];
-        } catch (error) {
-          console.error("Error parsing attachments for userMessage:", error);
-        }
-      }
-
-      const userMessage = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: message,
-        timestamp: userMessageTimestamp || new Date().toISOString(), // 🕐 USAR EL TIMESTAMP DEL FRONTEND
-        attachments: attachments.length > 0 ? attachments : undefined,
-        project_id: chatData.project_id,
-        session_id: sessionId,
-        version_id: nextVersion,
-      };
-
-      const generatedCodeUrls = await checkAndGetGeneratedCode(
-        supabase,
-        sessionId
-      );
-
-      const assistantMessage: any = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: `### \n${finalOutput}`,
-        timestamp: new Date().toISOString(),
-        prediction: {
-          confidence: 1,
-          data: { output: responseData.output },
-          metrics: { accuracy: 1, precision: 1, recall: 1 },
-        },
-        project_id: chatData.project_id,
-        session_id: sessionId,
-        version_id: nextVersion,
-        thinking: thinking === "true",
-      };
-
-      if (generatedCodeUrls && generatedCodeUrls.length > 0) {
-        assistantMessage.code = generatedCodeUrls;
-        console.log(
-          "✅ Código añadido al mensaje del asistente:",
-          generatedCodeUrls
-        );
-      }
-
-      console.log(
-        `✅ Mensajes guardados exitosamente. Thinking flag: ${assistantMessage.thinking}`
-      );
-
-      const updatedMessages = [
-        ...currentMessages,
-        userMessage,
-        assistantMessage,
-      ];
-
-      updatedMessages.forEach((msg, index) => {
-        msg.version_id = Math.floor(index / 2);
-      });
-
-      console.log(
-        "🔍 DEBUG - Verificando thinking en updatedMessages:",
-        updatedMessages
-          .filter((msg) => msg.role === "assistant")
-          .map((msg) => ({
-            id: msg.id,
-            thinking: (msg as any).thinking,
-            thinkingType: typeof (msg as any).thinking,
-          }))
-      );
-
-      const { error: updateError } = await supabase
-        .from("hestia_chats")
-        .update({
-          messages: updatedMessages,
-          version_id: nextVersion,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("session_id", sessionId)
-        .eq("user_id", session.user.id);
-
-      if (updateError) {
-        console.error("❌ Error actualizando chat:", updateError);
-        supabaseOperations.inc({ operation: 'update', table: 'hestia_chats', status: 'error' });
-        throw updateError;
-      } else {
-        supabaseOperations.inc({ operation: 'update', table: 'hestia_chats', status: 'success' });
-      }
-
-      if (generatedCodeUrls && generatedCodeUrls.length > 0) {
-        await cleanupCodeState(supabase, sessionId);
-      }
-
-      const { data: currentState } = await supabase
-        .from("hestia_states")
-        .select("request_id")
-        .eq("session_id", sessionId)
-        .single();
-
-      if (currentState?.request_id === requestId) {
-        console.log("🧹 Limpiando hestia_states para request:", requestId);
-        const { error: cleanupError } = await supabase
-          .from("hestia_states")
-          .upsert(
-            {
+          await fetch("/api/generate-title", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: message,
               session_id: sessionId,
-              is_loading: false,
-              pending_messages: null,
-              updated_at: new Date().toISOString(),
-              request_id: null,
-            },
-            { onConflict: "session_id" }
-          );
-
-        if (cleanupError) {
-          console.error("⚠️ Error limpiando hestia_states:", cleanupError);
-        } else {
-          console.log(
-            "✅ hestia_states limpiado completamente para session:",
-            sessionId,
-            "request:",
-            requestId
-          );
+            }),
+          });
+        } catch (e) {
+          console.error("Error llamando a generate-title:", e);
         }
-      } else {
-        console.log(
-          "⚠️ No se limpia hestia_states porque el requestId no coincide:",
-          {
-            currentRequestId: currentState?.request_id,
-            thisRequestId: requestId,
-          }
-        );
       }
-
-      console.log(
-        `✅ Mensajes guardados exitosamente. Thinking flag: ${assistantMessage.thinking}`
-      );
 
       httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '200' });
       endTimer({ status_code: '200' });
 
       return NextResponse.json({
         success: true,
-        response: assistantMessage.content,
-        prediction: assistantMessage.prediction,
-        ...(generatedCodeUrls &&
-          generatedCodeUrls.length > 0 && {
-            code: generatedCodeUrls,
-          }),
+        message:
+          "Procesamiento iniciado. La respuesta llegará de forma asíncrona.",
+        session_id: sessionId,
+        request_id: requestId,
+        attachments_stored: !!attachmentsToStore,
+        fileKeys_sent: !!fileKeysForN8N,
       });
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
+        httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '408' });
+        endTimer({ status_code: '408' });
         return NextResponse.json(
           {
-            error: "Timeout en la llamada a n8n",
-            details: "La operación excedió el límite de tiempo de 800s",
+            error: "Timeout en la llamada a N8N",
+            details: "La operación excedió el límite de tiempo",
           },
           {
             status: 408,
@@ -757,12 +448,12 @@ export async function POST(req: Request) {
           }
         );
       }
-      console.error("Error en llamada a n8n:", error);
+      console.error("Error en llamada a N8N:", error);
       throw error;
     }
   } catch (error) {
     console.error("Error completo:", error);
-    
+
     httpRequestTotal.inc({ method: 'POST', route: '/api/predictive/analyze', status_code: '500' });
     endTimer({ status_code: '500' });
 
@@ -773,41 +464,40 @@ export async function POST(req: Request) {
         });
       }
       if (supabase && sessionId) {
+        const queryTimer6 = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_states' });
         const { data: currentState } = await supabase
           .from("hestia_states")
           .select("request_id")
           .eq("session_id", sessionId)
           .single();
+        queryTimer6();
 
         if (currentState?.request_id === requestId) {
+          const queryTimer7 = supabaseQueryDuration.startTimer({ operation: 'upsert', table: 'hestia_states' });
           await supabase.from("hestia_states").upsert(
             {
               session_id: sessionId,
               is_loading: false,
               pending_messages: null,
+              pending_attachments: null,
               updated_at: new Date().toISOString(),
               request_id: null,
             },
             { onConflict: "session_id" }
           );
+          queryTimer7();
+          supabaseOperations.inc({ operation: 'upsert', table: 'hestia_states', status: 'success' });
           console.log(
             "🛑 hestia_states limpiado por error para session:",
             sessionId,
             "request:",
             requestId
           );
-        } else {
-          console.log(
-            "⚠️ No se limpia hestia_states por error porque el requestId no coincide:",
-            {
-              currentRequestId: currentState?.request_id,
-              thisRequestId: requestId,
-            }
-          );
         }
       }
     } catch (cleanupError) {
       console.error("Error limpiando is_loading:", cleanupError);
+      supabaseOperations.inc({ operation: 'upsert', table: 'hestia_states', status: 'error' });
     }
 
     return NextResponse.json(
@@ -817,7 +507,6 @@ export async function POST(req: Request) {
             ? error.message
             : "Failed to process prediction",
         details: error,
-        response: "No se pudo generar una predicción",
       },
       { status: (error as any)?.status || 500 }
     );
@@ -831,15 +520,19 @@ async function getNextChatNumber(
   supabase: SupabaseClient,
   userId: string
 ): Promise<number> {
+  const queryTimer = supabaseQueryDuration.startTimer({ operation: 'select', table: 'hestia_chats' });
   const { count, error } = await supabase
     .from("hestia_chats")
     .select("id", { count: "exact" })
     .eq("user_id", userId);
+  queryTimer();
 
   if (error) {
     console.error("Error contando chats:", error);
+    supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'error' });
     return 1;
   }
 
+  supabaseOperations.inc({ operation: 'select', table: 'hestia_chats', status: 'success' });
   return ((count as number) || 0) + 1;
 }
