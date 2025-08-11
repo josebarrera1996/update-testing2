@@ -45,6 +45,16 @@ const n8nWorkflowDuration = new client.Histogram({
   buckets: [1, 5, 10, 30, 60, 120, 300]
 });
 
+const registeredUsersTotal = new client.Gauge({
+  name: 'registered_users_total',
+  help: 'Total number of registered users in the system'
+});
+
+const activeSessionsTotal = new client.Gauge({
+  name: 'active_sessions_total',
+  help: 'Number of users with active sessions'
+});
+
 register.registerMetric(httpRequestDuration);
 register.registerMetric(httpRequestTotal);
 register.registerMetric(httpRequestsActive);
@@ -52,6 +62,8 @@ register.registerMetric(supabaseOperations);
 register.registerMetric(supabaseConnectionsActive);
 register.registerMetric(supabaseQueryDuration);
 register.registerMetric(n8nWorkflowDuration);
+register.registerMetric(registeredUsersTotal);
+register.registerMetric(activeSessionsTotal);
 
 export { 
   register, 
@@ -61,5 +73,7 @@ export {
   supabaseOperations, 
   supabaseConnectionsActive,
   supabaseQueryDuration,
-  n8nWorkflowDuration 
+  n8nWorkflowDuration,
+  registeredUsersTotal,
+  activeSessionsTotal
 };
