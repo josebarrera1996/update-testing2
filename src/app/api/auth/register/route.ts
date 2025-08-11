@@ -1,7 +1,7 @@
 // app/api/auth/register/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { httpRequestDuration, httpRequestTotal, httpRequestsActive, supabaseOperations, supabaseConnectionsActive, supabaseQueryDuration } from "@/lib/metrics";
+import { httpRequestDuration, httpRequestTotal, httpRequestsActive, supabaseOperations, supabaseConnectionsActive, supabaseQueryDuration, registeredUsersTotal } from "@/lib/metrics";
 
 // Verificar variables de entorno
 if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
@@ -123,6 +123,7 @@ export async function POST(request: Request) {
       );
     } else {
       supabaseOperations.inc({ operation: 'insert', table: 'aria_user_profiles', status: 'success' });
+      registeredUsersTotal.inc();
     }
 
     httpRequestTotal.inc({ method: 'POST', route: '/api/auth/register', status_code: '200' });
